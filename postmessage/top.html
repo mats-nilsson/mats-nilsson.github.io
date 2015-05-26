@@ -1,0 +1,50 @@
+<!doctype html>
+  <h1>postMessage top frame inside webview</h1>
+  <div>Last postMessage received:<span id="mstatus"></span></div>
+  <input type="text" value="Three" id="ii"></input>
+  <button id="send-button">Send postMessage</button>
+  <div id="log"></div>
+
+<iframe src="iframe.html" width="80%"></iframe>
+
+
+<script>
+window.esource = null;
+
+var $ = function(id) { return document.getElementById(id); };
+var log = function(msg) {
+  $('log').innerText += msg + '-';
+};
+
+var updateStatus = function(e) {
+  var hasSource = !!e.source;
+  var sourceHTML = hasSource ? 'YES'
+      : '<span style="color:red">NO</span>';
+  $('mstatus').innerHTML =
+      'event.data: ' + e.data +
+      ',event.origin: ' + e.origin +
+      ',event.source: ' + sourceHTML;
+};
+
+window.onmessage = function(e) {  
+  window.esource = e.source;
+  updateStatus(e);
+  //log('postMessage-receive: ' + e.message);
+};
+
+var sendPostMessage = function() {
+  var value = $('ii').value;
+  if (!window.esource) {
+    log('no channel to send postMessage, you need to send postMessage from app to the webview first.');
+    return;
+  }
+  window.esource.postMessage(value, '*');  
+};
+
+var init = function() {
+  $('send-button').onclick = sendPostMessage;
+};
+
+init();
+
+</script>

@@ -1,0 +1,42 @@
+<!doctype html>
+  <h1>postMessage subframe inside webview</h1>
+  <div>event.source status:<span id="sstatus"></span></div>
+  <input type="text" value="Four" id="ii"></input>
+  <button id="send-button">Send postMessage</button>
+  <div id="log"></div>
+
+<script>
+window.esource = null;
+
+var $ = function(id) { return document.getElementById(id); };
+var log = function(msg) {
+  $('log').innerText += msg + '-';
+};
+
+var updateSourceStatus = function() {
+  $('sstatus').innerText +=
+      window.esource ? 'YES,' : 'NO,';
+};
+
+window.onmessage = function(e) {  
+  window.esource = e.source;
+  updateSourceStatus();
+  log('postMessage-reveive: ' + e.message);
+};
+
+var sendPostMessage = function() {
+  var value = $('ii').value;
+  var esource = window.top.esource;
+  if (!esource) {
+    log('no esource [in top]');
+    return;
+  }
+  esource.postMessage(value, '*');  
+};
+
+var init = function() {
+  $('send-button').onclick = sendPostMessage;
+};
+
+init();
+</script>

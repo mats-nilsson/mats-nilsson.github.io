@@ -3,6 +3,7 @@
   <div>event.source status:<span id="sstatus"></span></div>
   <input type="text" value="Four" id="ii"></input>
   <button id="send-button">Send postMessage</button>
+  <button id="send-button2">Send postMessage via root</button>
   <div id="log"></div>
 
 <script>
@@ -34,8 +35,19 @@ var sendPostMessage = function() {
   esource.postMessage(value, '*');  
 };
 
+var sendPostMessageViaRoot = function() {
+  var value = $('ii').value;
+  var esource = window.top.esource;
+  if (!esource) {
+    log('no esource [in top]');
+    return;
+  }
+  window.top.sendMyMessage(esource, value);
+};
+
 var init = function() {
   $('send-button').onclick = sendPostMessage;
+  $('send-button2').onclick = sendPostMessageViaRoot;
 };
 
 init();

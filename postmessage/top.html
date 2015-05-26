@@ -26,10 +26,14 @@ var updateStatus = function(e) {
       ',event.source: ' + sourceHTML;
 };
 
-window.onmessage = function(e) {  
+window.onmessage = function(e) {
   window.esource = e.source;
   updateStatus(e);
   //log('postMessage-receive: ' + e.message);
+};
+
+window.sendMyMessage = function(source, value) {
+  source.postMessage(value, '*');
 };
 
 var sendPostMessage = function() {
@@ -38,7 +42,7 @@ var sendPostMessage = function() {
     log('no channel to send postMessage, you need to send postMessage from app to the webview first.');
     return;
   }
-  window.esource.postMessage(value, '*');  
+  window.sendMyMessage(window.esource, value);
 };
 
 var init = function() {

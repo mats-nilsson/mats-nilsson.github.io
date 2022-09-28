@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+    <title>Test Page</title>
+    <script type="text/javascript">
+function logStateChange(text) {
+  console.log(text);
+  const log = document.getElementById('log');
+  const newChild = document.createElement('p');
+  newChild.append(text.toString());
+  log.prepend(newChild);
+}
+
+function start() {
+  logStateChange("Started");
+  const videoTag = document.getElementById('video');
+  logStateChange(videoTag.outerHTML);
+  navigator.mediaDevices.getUserMedia({video:true, audio : true,})
+      .then((streams) => {
+        logStateChange("Got streams");
+        logStateChange(streams);
+        videoTag.srcObject = streams;
+      })
+      .catch((error) => {
+        logStateChange(error);
+      });
+}
+document.addEventListener('DOMContentLoaded', start, false);
+    </script>
+  </head>
+  <body>
+    <video id="video" autoplay="true"></video>
+    <div id="log"></div>
+</body></html>

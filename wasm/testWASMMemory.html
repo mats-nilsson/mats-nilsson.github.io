@@ -18,9 +18,9 @@
           document.getElementById("log").value += "allocate successfully\n" + now.toISOString() + "\n";
           setTimeout(function () {
 
-              location.href = location.pathname
+              location.href = location.origin + location.pathname
               // location.reload();
-        }, 1000); 
+        }, 1000);
       } catch (error) {
         document.getElementById("log").value += "allocate failed\n" + now.toISOString() + "\n";
       }

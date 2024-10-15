@@ -14,12 +14,15 @@
           initial: (134217728 * 5) / 65536,
           maximum: (134217728 * 5) / 65536,
         });
-        document.getElementById("log").value += "allocate successfully" + "\n";
-        setTimeout(function () {
-          location.reload();
-        }, 1000); // 5000 milliseconds = 5 seconds
+          var now = new Date();
+          document.getElementById("log").value += "allocate successfully\n" + now.toISOString() + "\n";
+          setTimeout(function () {
+
+              location.href = location.pathname
+              // location.reload();
+        }, 1000); 
       } catch (error) {
-        document.getElementById("log").value += "allocate failed" + "\n";
+        document.getElementById("log").value += "allocate failed\n" + now.toISOString() + "\n";
       }
     </script>
   </body>

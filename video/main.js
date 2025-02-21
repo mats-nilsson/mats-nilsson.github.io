@@ -34,6 +34,7 @@ let _track = null;
 let _maxWidth = 0, _maxHeight = 0;
 let _maxBitrate = undefined;
 let _prevReport = new Map();
+let _lastResolution = 0;
 
 // When the page loads.
 window.onload = async () => {
@@ -177,9 +178,20 @@ async function reconfigure(width, height, maxBitrateKbps) {
   _maxHeight = height;
   _maxBitrate = kbps_to_bps(maxBitrateKbps);
 
+  if (_lastResolution != height) {
+    stop();
+    _lastResolution = height;
+  }
+
   if (_track == null) {
-    const stream = await navigator.mediaDevices.getUserMedia(
-        {video: {width: 1280, height: 720}});
+    let stream;
+    if (height < 1080) {
+      stream = await navigator.mediaDevices.getUserMedia(
+          {video: {width: 1280, height: 720}});
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia(
+          {video: {width: 1920, height: 1080}});
+    }
     _track = stream.getTracks()[0];
     await _pc1.getSenders()[0].replaceTrack(_track);
   }

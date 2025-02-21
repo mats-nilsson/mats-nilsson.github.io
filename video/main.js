@@ -1,10 +1,12 @@
 const kConsole = document.getElementById('consoleId');
 
 const kSimulcastCheckbox = document.getElementById('simulcastCheckboxId');
+const kCameraSelect = document.getElementById('cameraSelectId');
 const kCodecSelect = document.getElementById('codecSelectId');
 const kVideo = document.getElementById('video');
 
 const kHardwareCodecs = [];
+
 function isPowerEfficient(codec) {
   for (const hwCodec of kHardwareCodecs) {
     if (codec.mimeType == hwCodec.mimeType &&
@@ -35,6 +37,7 @@ let _maxWidth = 0, _maxHeight = 0;
 let _maxBitrate = undefined;
 let _prevReport = new Map();
 let _lastResolution = 0;
+let _lastCameraId = '';
 
 // When the page loads.
 window.onload = async () => {
@@ -84,12 +87,27 @@ window.onload = async () => {
     kCodecSelect.appendChild(option);
   }
 
+  // Add cameras to the drop-down
+  navigator.mediaDevices.enumerateDevices().then(devices => {
+    devices.filter(device => device.kind == 'videoinput').forEach((device, index) => {
+      const label = device.label || `Camera ${index+1}`;
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.innerText = label;
+      kCameraSelect.appendChild(option);
+    });
+  });
+
   // Periodically poll getStats()
   setInterval(doGetStats, 1000);
-}
+};
 
 function getSelectedCodec() {
   return JSON.parse(kCodecSelect.value);
+}
+
+function getSelectedCameraId() {
+  return kCameraSelect.value;
 }
 
 function stop() {
@@ -148,10 +166,12 @@ function mungeDependencyDescriptor(sdp) {
 
 async function reconfigure(width, height, maxBitrateKbps) {
   const doSimulcast = kSimulcastCheckbox.checked;
+  const cameraId = getSelectedCameraId();
 
-  if (_lastResolution != height) {
+  if (_lastResolution != height || _lastCameraId != cameraId) {
     stop();
     _lastResolution = height;
+    _lastCameraId = cameraId;
   }
 
   let isFirstTimeNegotiation = false;
@@ -187,10 +207,10 @@ async function reconfigure(width, height, maxBitrateKbps) {
     let stream;
     if (height < 1080) {
       stream = await navigator.mediaDevices.getUserMedia(
-          {video: {width: 1280, height: 720}});
+          {video: {deviceId: cameraId, width: 1280, height: 720}});
     } else {
       stream = await navigator.mediaDevices.getUserMedia(
-          {video: {width: 1920, height: 1080}});
+          {video: {deviceId: cameraId, width: 1920, height: 1080}});
     }
     _track = stream.getTracks()[0];
     await _pc1.getSenders()[0].replaceTrack(_track);
@@ -200,6 +220,7 @@ async function reconfigure(width, height, maxBitrateKbps) {
 
 async function updateParameters() {
   const codec = getSelectedCodec();
+  const cameraId = getSelectedCameraId();
   if (_pc1 == null || _pc1.getSenders().length != 1) {
     return;
   }

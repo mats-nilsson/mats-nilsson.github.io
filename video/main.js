@@ -149,6 +149,11 @@ function mungeDependencyDescriptor(sdp) {
 async function reconfigure(width, height, maxBitrateKbps) {
   const doSimulcast = kSimulcastCheckbox.checked;
 
+  if (_lastResolution != height) {
+    stop();
+    _lastResolution = height;
+  }
+
   let isFirstTimeNegotiation = false;
   if (_pc1 == null) {
     isFirstTimeNegotiation = true;
@@ -177,11 +182,6 @@ async function reconfigure(width, height, maxBitrateKbps) {
   _maxWidth = width;
   _maxHeight = height;
   _maxBitrate = kbps_to_bps(maxBitrateKbps);
-
-  if (_lastResolution != height) {
-    stop();
-    _lastResolution = height;
-  }
 
   if (_track == null) {
     let stream;

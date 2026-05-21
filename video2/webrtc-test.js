@@ -233,7 +233,25 @@ export function runWebRTCTest(testParams) {
 
                         statsReport1.forEach(stat => {
                             if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
-                                outboundRtp = stat;
+                                if (!outboundRtp) {
+                                    outboundRtp = stat;
+                                } else {
+                                    // Pick the active transmitting layer, preferring highest resolution ('f' layer)
+                                    const isNewActive = stat.active !== false && (stat.bytesSent || 0) > 0;
+                                    const isCurrentActive = outboundRtp.active !== false && (outboundRtp.bytesSent || 0) > 0;
+
+                                    if (isNewActive && !isCurrentActive) {
+                                        outboundRtp = stat;
+                                    } else if (isNewActive && isCurrentActive) {
+                                        if (stat.rid === 'f' || (stat.frameWidth || 0) > (outboundRtp.frameWidth || 0)) {
+                                            outboundRtp = stat;
+                                        }
+                                    } else if (!isNewActive && !isCurrentActive) {
+                                        if (stat.rid === 'f') {
+                                            outboundRtp = stat;
+                                        }
+                                    }
+                                }
                             }
                         });
 

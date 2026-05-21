@@ -3,8 +3,8 @@
  * Binds controls, manages grids, handles interactions, and controls view state.
  */
 
-import { CODECS, SCALABILITY_MODES, RESOLUTIONS } from './codec-utils.js';
-import { CapabilityTestEngine } from './tests-engine.js';
+import { CODECS, SCALABILITY_MODES, RESOLUTIONS } from './codec-utils.js?v=2';
+import { CapabilityTestEngine } from './tests-engine.js?v=2';
 
 // Initialize execution engine
 const engine = new CapabilityTestEngine();
@@ -41,6 +41,7 @@ const elements = {
 
     btnRunSuite: document.getElementById('btnRunSuite'),
     btnCancelSuite: document.getElementById('btnCancelSuite'),
+    btnResetConfig: document.getElementById('btnResetConfig'),
 
     btnViewMatrix: document.getElementById('btnViewMatrix'),
     btnViewList: document.getElementById('btnViewList'),
@@ -61,6 +62,7 @@ const elements = {
     // Modal
     detailModal: document.getElementById('detailModal'),
     btnModalClose: document.getElementById('btnModalClose'),
+    btnModalRetry: document.getElementById('btnModalRetry'),
     modalTitle: document.getElementById('modalTitle'),
     modalCodec: document.getElementById('modalCodec'),
     modalApiType: document.getElementById('modalApiType'),
@@ -86,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runDiagnostics();
     populateScalabilityCheckboxes();
     bindEvents();
+    loadSelectionsFromLocalStorage(); // Load saved configurations on startup!
 });
 
 /**
@@ -102,6 +105,7 @@ function populateScalabilityCheckboxes() {
         input.type = 'checkbox';
         input.value = mode;
         input.checked = ['L1T1', 'L1T2', 'L1T3'].includes(mode); // Default selections
+        input.addEventListener('change', saveSelectionsToLocalStorage); // Auto-save on toggle
         
         const span = document.createElement('span');
         span.textContent = mode;
@@ -117,8 +121,14 @@ function populateScalabilityCheckboxes() {
  */
 function bindEvents() {
     // Scalability select all/none
-    elements.btnSelectAllScalability.addEventListener('click', () => toggleAllScalability(true));
-    elements.btnSelectNoneScalability.addEventListener('click', () => toggleAllScalability(false));
+    elements.btnSelectAllScalability.addEventListener('click', () => {
+        toggleAllScalability(true);
+        saveSelectionsToLocalStorage();
+    });
+    elements.btnSelectNoneScalability.addEventListener('click', () => {
+        toggleAllScalability(false);
+        saveSelectionsToLocalStorage();
+    });
 
     // Navigation view toggle
     elements.btnViewMatrix.addEventListener('click', () => switchView('matrix'));
@@ -127,6 +137,7 @@ function bindEvents() {
     // Runner commands
     elements.btnRunSuite.addEventListener('click', startExecution);
     elements.btnCancelSuite.addEventListener('click', cancelExecution);
+    elements.btnResetConfig.addEventListener('click', resetToDefaultConfig);
 
     // Filters & Exports
     elements.listSearchInput.addEventListener('input', refreshListView);
@@ -137,6 +148,13 @@ function bindEvents() {
     elements.btnModalClose.addEventListener('click', closeModal);
     elements.detailModal.addEventListener('click', (e) => {
         if (e.target === elements.detailModal) closeModal();
+    });
+    elements.btnModalRetry.addEventListener('click', retryCurrentModalTest);
+
+    // Bind auto-save listeners to all sidebar controls
+    const configInputs = document.querySelectorAll('.config-panel input, .config-panel select');
+    configInputs.forEach(input => {
+        input.addEventListener('change', saveSelectionsToLocalStorage);
     });
 
     // Hook up test engine listeners
@@ -458,7 +476,12 @@ function handleTestStarted(test) {
  * Dispatched by engine when a specific test concludes
  */
 function handleTestCompleted(test) {
-    suiteResults.push(test);
+    const existingIdx = suiteResults.findIndex(t => t.id === test.id);
+    if (existingIdx !== -1) {
+        suiteResults[existingIdx] = test;
+    } else {
+        suiteResults.push(test);
+    }
     
     // 1. Update Matrix View cell
     let symbol = 'P';
@@ -526,12 +549,17 @@ function updateCellStatus(test, statusClass, symbol) {
  * Dynamically constructs structural row item for list view
  */
 function appendToListGrid(test) {
-    const row = document.createElement('div');
-    row.className = 'list-item-row';
-    row.dataset.id = test.id;
-    
-    // Bind modal click
-    row.onclick = () => openDetailModal(test);
+    let row = elements.listGrid.querySelector(`.list-item-row[data-id="${test.id}"]`);
+    const isUpdate = !!row;
+
+    if (!row) {
+        row = document.createElement('div');
+        row.className = 'list-item-row';
+        row.dataset.id = test.id;
+        row.onclick = () => openDetailModal(test);
+    } else {
+        row.replaceChildren(); // Wipe cells to rebuild
+    }
 
     const colCodec = document.createElement('div');
     colCodec.className = 'list-item-codec';
@@ -569,7 +597,9 @@ function appendToListGrid(test) {
     colStatus.appendChild(badge);
     row.appendChild(colStatus);
 
-    elements.listGrid.appendChild(row);
+    if (!isUpdate) {
+        elements.listGrid.appendChild(row);
+    }
 }
 
 function refreshListView() {
@@ -801,6 +831,18 @@ function openDetailModal(test) {
     };
     elements.modalPayload.textContent = JSON.stringify(payload, null, 2);
 
+    // Configure selective retry button state
+    activeModalTest = test;
+    const isSuiteRunning = elements.btnRunSuite.disabled;
+    const isFinishedStatus = test.status === 'passed' || test.status === 'failed' || test.status === 'unsupported';
+
+    if (isFinishedStatus && !isSuiteRunning) {
+        elements.btnModalRetry.style.display = 'inline-flex';
+        elements.btnModalRetry.disabled = false;
+    } else {
+        elements.btnModalRetry.style.display = 'none';
+    }
+
     elements.detailModal.classList.add('active');
 }
 
@@ -897,5 +939,156 @@ function runDiagnostics() {
         }
     } catch (e) {
         gpuDiv.textContent = `GPU: Probing failed`;
+    }
+}
+
+/**
+ * Serializes the current control configurations and saves them to LocalStorage
+ */
+function saveSelectionsToLocalStorage() {
+    try {
+        const selections = gatherSelections();
+        const settings = {
+            concurrency: elements.cfgConcurrency.value,
+            timeout: elements.cfgTimeout.value
+        };
+        localStorage.setItem('media_capability_analyzer_cfg', JSON.stringify({ selections, settings }));
+    } catch (err) {
+        console.error('Failed to save configurations to LocalStorage:', err);
+    }
+}
+
+/**
+ * Hydrates the controls checkboxes and settings input values from LocalStorage
+ */
+function loadSelectionsFromLocalStorage() {
+    try {
+        const saved = localStorage.getItem('media_capability_analyzer_cfg');
+        if (!saved) return;
+
+        const { selections, settings } = JSON.parse(saved);
+        if (!selections || !settings) return;
+
+        // 1. Core API checks
+        elements.cfgWebCodecs.checked = selections.apiTypes.includes('WebCodecs');
+        elements.cfgWebRTC.checked = selections.apiTypes.includes('WebRTC');
+
+        // 2. Codec checks
+        elements.codecH265.checked = selections.codecs.includes('H265');
+        elements.codecVP9.checked = selections.codecs.includes('VP9');
+        elements.codecAV1.checked = selections.codecs.includes('AV1');
+        elements.codecH264.checked = selections.codecs.includes('H264');
+        elements.codecVP8.checked = selections.codecs.includes('VP8');
+
+        // 3. Hardware preferences checks
+        elements.hwPreferHardware.checked = selections.hardwarePrefs.includes('prefer-hardware');
+        elements.hwPreferSoftware.checked = selections.hardwarePrefs.includes('prefer-software');
+        elements.hwNoPreference.checked = selections.hardwarePrefs.includes('no-preference');
+
+        // 4. Transmission modes
+        if (selections.transmissionModes) {
+            elements.modeSinglecast.checked = selections.transmissionModes.includes('singlecast');
+            elements.modeSimulcast.checked = selections.transmissionModes.includes('simulcast');
+        }
+
+        // 5. Resolution checks
+        elements.res1080p.checked = selections.resolutions.includes('1080p');
+        elements.res720p.checked = selections.resolutions.includes('720p');
+        elements.res360p.checked = selections.resolutions.includes('360p');
+        elements.res180p.checked = selections.resolutions.includes('180p');
+
+        // 6. Settings inputs
+        elements.cfgConcurrency.value = settings.concurrency || 1;
+        elements.cfgTimeout.value = settings.timeout || 10;
+
+        // 7. Dynamic Scalability checkboxes
+        if (selections.scalabilityModes) {
+            const scaleChecks = elements.scalabilityContainer.querySelectorAll('input[type="checkbox"]');
+            scaleChecks.forEach(input => {
+                input.checked = selections.scalabilityModes.includes(input.value);
+            });
+        }
+    } catch (err) {
+        console.error('Failed to load configurations from LocalStorage:', err);
+    }
+}
+
+/**
+ * Resets the control sidebar configuration elements back to pristine defaults
+ */
+function resetToDefaultConfig() {
+    try {
+        localStorage.removeItem('media_capability_analyzer_cfg');
+
+        // Reset checkboxes to default states
+        elements.cfgWebCodecs.checked = true;
+        elements.cfgWebRTC.checked = true;
+
+        elements.codecH265.checked = true;
+        elements.codecVP9.checked = true;
+        elements.codecAV1.checked = true;
+        elements.codecH264.checked = true;
+        elements.codecVP8.checked = true;
+
+        elements.hwPreferHardware.checked = true;
+        elements.hwPreferSoftware.checked = true;
+        elements.hwNoPreference.checked = true;
+
+        elements.modeSinglecast.checked = true;
+        elements.modeSimulcast.checked = true;
+
+        elements.res1080p.checked = true;
+        elements.res720p.checked = true;
+        elements.res360p.checked = true;
+        elements.res180p.checked = true;
+
+        elements.cfgConcurrency.value = 1;
+        elements.cfgTimeout.value = 10;
+
+        // Re-populate dynamic scalability modes checklist (default check L1T1, L1T2, L1T3)
+        populateScalabilityCheckboxes();
+
+        showToast('Configurations reset to defaults.', 'info');
+    } catch (err) {
+        console.error('Failed to reset configurations:', err);
+    }
+}
+
+let activeModalTest = null; // Stored reference for selective retries
+
+/**
+ * Executes single-test isolated retry for the currently selected modal test
+ */
+async function retryCurrentModalTest() {
+    if (!activeModalTest) return;
+
+    // 1. Disable retry button to prevent double taps
+    elements.btnModalRetry.disabled = true;
+
+    // 2. Close modal
+    closeModal();
+
+    // 3. Reset status cell to testing state
+    updateCellStatus(activeModalTest, 'testing', '...');
+
+    // 4. Reset list view row badge to testing state
+    const listRow = elements.listGrid.querySelector(`.list-item-row[data-id="${activeModalTest.id}"]`);
+    if (listRow) {
+        const badge = listRow.querySelector('.badge');
+        if (badge) {
+            badge.className = 'badge badge-testing';
+            badge.textContent = 'testing';
+        }
+    }
+
+    showToast(`Retrying test for ${activeModalTest.apiType} ${activeModalTest.codecKey} ${activeModalTest.resKey}...`, 'info');
+
+    // 5. Trigger isolated single retry on test engine
+    const timeoutValue = parseFloat(elements.cfgTimeout.value) || 10;
+    
+    try {
+        await engine.retrySingleTest(activeModalTest, timeoutValue);
+    } catch (err) {
+        showToast(`Retry execution failed: ${err.message}`, 'failed');
     }
 }

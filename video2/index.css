@@ -944,6 +944,39 @@ body {
     user-select: none;
 }
 
+/* Mini Retry Action Button Styles */
+.btn-mini-retry {
+    background: linear-gradient(135deg, var(--accent-color) 0%, #1d4ed8 100%);
+    color: white;
+    border: none;
+    padding: 0.35rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.725rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    box-shadow: 0 2px 8px var(--accent-glow);
+    transition: all 0.15s ease;
+}
+
+.btn-mini-retry:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+}
+
+.btn-mini-retry:active {
+    transform: translateY(1px);
+}
+
+.btn-mini-retry:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 /* Floating Toast Notification System */
 .toast-container {
     position: fixed;

@@ -127,6 +127,28 @@ export class CapabilityTestEngine {
     }
 
     /**
+     * Executes a single test configuration in isolation for selective retries
+     */
+    async retrySingleTest(testConfig, timeoutSeconds = 10) {
+        this.isCancelled = false;
+        this.timeoutMs = timeoutSeconds * 1000;
+
+        // Prime single-test stats
+        this.stats = {
+            pending: 1,
+            testing: 0,
+            passed: 0,
+            failed: 0,
+            unsupported: 0
+        };
+        
+        this.queue = [testConfig];
+        this.running = [];
+
+        await this.processQueueWorker();
+    }
+
+    /**
      * Continuous worker that pulls tests from queue and processes them
      */
     async processQueueWorker() {

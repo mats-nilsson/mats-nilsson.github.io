@@ -218,6 +218,7 @@
                 <div class="action-buttons">
                     <button id="btnRunSuite" class="btn btn-primary">Run Test Suite</button>
                     <button id="btnCancelSuite" class="btn btn-secondary" disabled>Cancel Suite</button>
+                    <button id="btnResetConfig" class="btn btn-secondary" style="margin-top: 0.25rem; border-color: rgba(220, 38, 38, 0.15); color: var(--text-muted);">Reset to Defaults</button>
                 </div>
             </aside>
 
@@ -276,7 +277,15 @@
         <div class="modal-content glass">
             <div class="modal-header">
                 <h3 id="modalTitle">Test Details</h3>
-                <button class="close-button" id="btnModalClose">&times;</button>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <button id="btnModalRetry" class="btn-mini-retry" style="display: none;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                        </svg>
+                        Retry Test
+                    </button>
+                    <button class="close-button" id="btnModalClose">&times;</button>
+                </div>
             </div>
             <div class="modal-body scrollable">
                 <div class="modal-summary-grid">
@@ -362,6 +371,6 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <!-- Web Application Script Modules -->
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=2"></script>
 </body>
 </html>

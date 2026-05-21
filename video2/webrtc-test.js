@@ -188,7 +188,7 @@ export function runWebRTCTest(testParams) {
             log('Offered SDP original: ' + offer.sdp.split('\r\n').slice(0, 5).join(' | ') + '...');
 
             // Manipulate SDP to enforce target codec
-            const forcedOfferSdp = forceCodecInSdp(offer.sdp, testParams.codecKey);
+            const forcedOfferSdp = forceCodecInSdp(offer.sdp, testParams.codecKey, testParams.bitrate);
             log(`SDP offer forced codec mapping.`);
 
             await pc1.setLocalDescription({ type: 'offer', sdp: forcedOfferSdp });
@@ -196,7 +196,7 @@ export function runWebRTCTest(testParams) {
 
             log('Creating SDP Answer...');
             const answer = await pc2.createAnswer();
-            const forcedAnswerSdp = forceCodecInSdp(answer.sdp, testParams.codecKey);
+            const forcedAnswerSdp = forceCodecInSdp(answer.sdp, testParams.codecKey, testParams.bitrate);
             
             await pc2.setLocalDescription({ type: 'answer', sdp: forcedAnswerSdp });
             await pc1.setRemoteDescription(pc2.localDescription);

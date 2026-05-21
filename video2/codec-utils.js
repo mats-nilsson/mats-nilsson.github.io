@@ -194,11 +194,11 @@ export async function checkWebRTCStaticSupport(codecKey, config = {}) {
 /**
  * Force specific WebRTC codec in SDP by reordering or removing others
  */
-export function forceCodecInSdp(sdp, codecKey) {
+export function forceCodecInSdp(sdp, codecKey, targetBitrateBps = null) {
     const spec = CODECS[codecKey];
     if (!spec) return sdp;
 
-    const lines = sdp.split('\r\n');
+    let lines = sdp.split('\r\n');
     let videoMLineIdx = -1;
     
     // Locate video m-line
@@ -249,6 +249,48 @@ export function forceCodecInSdp(sdp, codecKey) {
     parts.splice(3); // Remove existing formats
     const newMLine = [...parts, ...newFormats].join(' ');
     lines[videoMLineIdx] = newMLine;
+
+    // Inject aggressive starting bitrate constraints into SDP if targetBitrateBps is configured!
+    if (targetBitrateBps) {
+        const maxKbps = Math.floor(targetBitrateBps / 1000);
+        const startKbps = Math.max(300, Math.floor(maxKbps * 0.8)); // Start at 80% of target
+        const minKbps = Math.max(100, Math.floor(maxKbps * 0.4));  // Min at 40% of target
+
+        // A. Inject b=AS:maxKbps under m=video to allocate sufficient channel capacity
+        let hasBandwidthLine = false;
+        let nextLineIdx = videoMLineIdx + 1;
+        while (nextLineIdx < lines.length && !lines[nextLineIdx].startsWith('m=')) {
+            if (lines[nextLineIdx].startsWith('b=AS:')) {
+                lines[nextLineIdx] = `b=AS:${maxKbps}`;
+                hasBandwidthLine = true;
+                break;
+            }
+            nextLineIdx++;
+        }
+        if (!hasBandwidthLine) {
+            lines.splice(videoMLineIdx + 1, 0, `b=AS:${maxKbps}`);
+        }
+
+        // B. Inject x-google-start-bitrate and overrides inside target payload types a=fmtp lines
+        matchingPTs.forEach(pt => {
+            let fmtpLineIdx = -1;
+            for (let j = 0; j < lines.length; j++) {
+                if (lines[j].startsWith(`a=fmtp:${pt} `) || lines[j] === `a=fmtp:${pt}`) {
+                    fmtpLineIdx = j;
+                    break;
+                }
+            }
+
+            const customParams = `x-google-start-bitrate=${startKbps};x-google-min-bitrate=${minKbps};x-google-max-bitrate=${maxKbps}`;
+            if (fmtpLineIdx !== -1) {
+                if (!lines[fmtpLineIdx].includes('x-google-start-bitrate')) {
+                    lines[fmtpLineIdx] = `${lines[fmtpLineIdx]};${customParams}`;
+                }
+            } else {
+                lines.push(`a=fmtp:${pt} ${customParams}`);
+            }
+        });
+    }
 
     // Rejoin lines
     return lines.join('\r\n');

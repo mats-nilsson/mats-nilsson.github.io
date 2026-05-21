@@ -274,10 +274,13 @@ export function forceCodecInSdp(sdp, codecKey, targetBitrateBps = null) {
         // B. Inject x-google-start-bitrate and overrides inside target payload types a=fmtp lines
         matchingPTs.forEach(pt => {
             let fmtpLineIdx = -1;
+            let rtpmapLineIdx = -1;
             for (let j = 0; j < lines.length; j++) {
                 if (lines[j].startsWith(`a=fmtp:${pt} `) || lines[j] === `a=fmtp:${pt}`) {
                     fmtpLineIdx = j;
-                    break;
+                }
+                if (lines[j].startsWith(`a=rtpmap:${pt} `)) {
+                    rtpmapLineIdx = j;
                 }
             }
 
@@ -286,8 +289,9 @@ export function forceCodecInSdp(sdp, codecKey, targetBitrateBps = null) {
                 if (!lines[fmtpLineIdx].includes('x-google-start-bitrate')) {
                     lines[fmtpLineIdx] = `${lines[fmtpLineIdx]};${customParams}`;
                 }
-            } else {
-                lines.push(`a=fmtp:${pt} ${customParams}`);
+            } else if (rtpmapLineIdx !== -1) {
+                // Splice the new fmtp line right below the matching rtpmap line to conform to RFC layout!
+                lines.splice(rtpmapLineIdx + 1, 0, `a=fmtp:${pt} ${customParams}`);
             }
         });
     }

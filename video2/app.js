@@ -426,7 +426,12 @@ function handleTestCompleted(test) {
     // 1. Update Matrix View cell
     let symbol = 'P';
     let statusClass = 'cell-passed';
-    if (test.status === 'failed') {
+    const hasDeviations = test.stats && test.stats.hasPermanentDeviations;
+
+    if (test.status === 'passed' && hasDeviations) {
+        symbol = 'W';
+        statusClass = 'cell-warning';
+    } else if (test.status === 'failed') {
         symbol = 'F';
         statusClass = 'cell-failed';
     } else if (test.status === 'unsupported') {
@@ -440,7 +445,11 @@ function handleTestCompleted(test) {
 
     // 3. Send toast notification
     if (test.status === 'passed') {
-        showToast(`Passed: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'passed');
+        if (hasDeviations) {
+            showToast(`Passed with Deviations: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'info');
+        } else {
+            showToast(`Passed: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'passed');
+        }
     } else if (test.status === 'failed') {
         showToast(`Failed: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'failed');
     }
@@ -509,8 +518,15 @@ function appendToListGrid(test) {
 
     const colStatus = document.createElement('div');
     const badge = document.createElement('span');
-    badge.className = `badge badge-${test.status}`;
-    badge.textContent = test.status;
+    const hasDeviations = test.stats && test.stats.hasPermanentDeviations;
+
+    if (test.status === 'passed' && hasDeviations) {
+        badge.className = 'badge badge-warning';
+        badge.textContent = 'deviations';
+    } else {
+        badge.className = `badge badge-${test.status}`;
+        badge.textContent = test.status;
+    }
     colStatus.appendChild(badge);
     row.appendChild(colStatus);
 

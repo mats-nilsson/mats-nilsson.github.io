@@ -311,16 +311,19 @@ export function runWebRTCTest(testParams) {
                                 if (isMatchingCodec) {
                                     activeFlowChecks++;
                                     
-                                    // Smart wait: wait until browser populates both stats asynchronously, OR 5 checks (2.5s) have passed.
+                                    // Smart wait: wait until browser populates both stats asynchronously, OR 10 checks (5.0s) have passed.
+                                    // Giving the WebRTC slow-start BWE estimator plenty of time to ramp up the resolution.
                                     const bothStatsPopulated = encoderImpl !== 'unknown' && decoderImpl !== 'unknown';
-                                    const shouldResolve = bothStatsPopulated || activeFlowChecks >= 5;
+                                    const shouldResolve = bothStatsPopulated || activeFlowChecks >= 10;
 
                                     if (shouldResolve) {
                                         log(`CRITICAL: Positive media flow verified using negotiated codec: ${codecMime}`);
                                         log(` negotiated details -> Encoder: ${encoderImpl} | Decoder: ${decoderImpl}`);
 
-                                        // 1. Resolution Downscaling Verification
                                         const warnings = [];
+                                        let hasPermanentDeviations = false;
+
+                                        // 1. Resolution Downscaling Verification
                                         const activeWidth = width;
                                         const activeHeight = height;
                                         const targetWidth = testParams.width;
@@ -331,6 +334,7 @@ export function runWebRTCTest(testParams) {
                                             const warningMsg = `⚠️ WebRTC automatically scaled down output resolution from ${targetWidth}x${targetHeight} to ${activeWidth}x${activeHeight} (Quality Limitation Reason: ${limitReason}).`;
                                             warnings.push(warningMsg);
                                             log(`WARNING: ${warningMsg}`);
+                                            hasPermanentDeviations = true;
                                         }
 
                                         // 2. Scalability Mode Downgrade Verification
@@ -344,10 +348,12 @@ export function runWebRTCTest(testParams) {
                                                 warnings.push(warningMsg);
                                                 log(`WARNING: ${warningMsg}`);
                                                 activeScalability = 'L1T1 (Silent Fallback)';
+                                                hasPermanentDeviations = true;
                                             } else if (activeScalability !== 'unknown' && activeScalability !== targetScalability) {
                                                 const warningMsg = `⚠️ WebRTC downgraded Scalability Mode from requested ${targetScalability} to active ${activeScalability}.`;
                                                 warnings.push(warningMsg);
                                                 log(`WARNING: ${warningMsg}`);
+                                                hasPermanentDeviations = true;
                                             } else if (activeScalability === 'unknown') {
                                                 log(`NOTE: Requested SVC mode ${targetScalability} is statically supported, but runtime stats did not report scalabilityMode.`);
                                             }
@@ -376,7 +382,8 @@ export function runWebRTCTest(testParams) {
                                                 activeHeight,
                                                 targetScalability,
                                                 activeScalability,
-                                                warnings
+                                                warnings,
+                                                hasPermanentDeviations
                                             }
                                         });
                                         return;

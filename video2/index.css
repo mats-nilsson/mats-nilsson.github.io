@@ -574,6 +574,16 @@ body {
     background: rgba(220, 38, 38, 0.25);
 }
 
+.cell-warning {
+    background: rgba(202, 138, 4, 0.15);
+    color: var(--warning-color);
+    border: 1px solid rgba(202, 138, 4, 0.25);
+}
+
+.cell-warning:hover {
+    background: rgba(202, 138, 4, 0.25);
+}
+
 .cell-unsupported {
     background: rgba(255, 255, 255, 0.03);
     color: var(--text-muted);
@@ -688,6 +698,12 @@ body {
     background: rgba(220, 38, 38, 0.15);
     color: var(--danger-color);
     border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+.badge-warning {
+    background: rgba(202, 138, 4, 0.15);
+    color: var(--warning-color);
+    border: 1px solid rgba(202, 138, 4, 0.2);
 }
 
 .badge-unsupported {

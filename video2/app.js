@@ -24,6 +24,8 @@ const elements = {
     hwPreferHardware: document.getElementById('hwPreferHardware'),
     hwPreferSoftware: document.getElementById('hwPreferSoftware'),
     hwNoPreference: document.getElementById('hwNoPreference'),
+    modeSinglecast: document.getElementById('modeSinglecast'),
+    modeSimulcast: document.getElementById('modeSimulcast'),
 
     res1080p: document.getElementById('res1080p'),
     res720p: document.getElementById('res720p'),
@@ -251,7 +253,11 @@ function gatherSelections() {
         scalabilityModes.push(input.value);
     });
 
-    return { apiTypes, codecs, hardwarePrefs, resolutions, scalabilityModes };
+    const transmissionModes = [];
+    if (elements.modeSinglecast.checked) transmissionModes.push('singlecast');
+    if (elements.modeSimulcast.checked) transmissionModes.push('simulcast');
+
+    return { apiTypes, codecs, hardwarePrefs, resolutions, scalabilityModes, transmissionModes };
 }
 
 /**
@@ -290,7 +296,17 @@ function buildMatrixShell(selections) {
             modes.forEach(mode => {
                 colCombos.push({ res, mode });
                 const th = document.createElement('th');
-                th.textContent = `${res} ${mode || 'Default'}`;
+                
+                const divRes = document.createElement('div');
+                divRes.className = 'hdr-res';
+                divRes.textContent = res;
+                th.appendChild(divRes);
+
+                const divMode = document.createElement('div');
+                divMode.className = 'hdr-mode';
+                divMode.textContent = mode || 'Default';
+                th.appendChild(divMode);
+
                 headerRow.appendChild(th);
             });
         });
@@ -364,12 +380,31 @@ function buildMatrixShell(selections) {
 
         const colCombos = [];
         selections.resolutions.forEach(res => {
-            const modes = selections.scalabilityModes.length > 0 ? selections.scalabilityModes : [null];
-            modes.forEach(mode => {
-                colCombos.push({ res, mode });
-                const th = document.createElement('th');
-                th.textContent = `${res} ${mode || 'Default'}`;
-                headerRow.appendChild(th);
+            const scalabilityModes = selections.scalabilityModes.length > 0 ? selections.scalabilityModes : [null];
+            scalabilityModes.forEach(mode => {
+                selections.transmissionModes.forEach(txMode => {
+                    colCombos.push({ res, mode, txMode });
+                    const th = document.createElement('th');
+                    const modeLabel = mode || 'Default';
+                    const txLabel = txMode === 'simulcast' ? 'Simulcast' : 'Singlecast';
+                    
+                    const divRes = document.createElement('div');
+                    divRes.className = 'hdr-res';
+                    divRes.textContent = res;
+                    th.appendChild(divRes);
+
+                    const divMode = document.createElement('div');
+                    divMode.className = 'hdr-mode';
+                    divMode.textContent = modeLabel;
+                    th.appendChild(divMode);
+
+                    const divTx = document.createElement('div');
+                    divTx.className = 'hdr-tx';
+                    divTx.textContent = `(${txLabel})`;
+                    th.appendChild(divTx);
+
+                    headerRow.appendChild(th);
+                });
             });
         });
 
@@ -390,7 +425,7 @@ function buildMatrixShell(selections) {
                 td.className = 'test-cell';
                 
                 const modeStr = combo.mode ? `_${combo.mode}` : '';
-                const cellId = `wrtc_${codecKey}_${combo.res}${modeStr}`;
+                const cellId = `wrtc_${codecKey}_${combo.res}${modeStr}_${combo.txMode}`;
                 td.id = cellId;
 
                 const cellInner = document.createElement('div');
@@ -467,7 +502,8 @@ function updateCellStatus(test, statusClass, symbol) {
     if (test.apiType === 'WebCodecs') {
         cellId = `wc_${test.codecKey}_${test.resKey}${modeStr}_${test.hardwareAcceleration}`;
     } else {
-        cellId = `wrtc_${test.codecKey}_${test.resKey}${modeStr}`;
+        const txMode = test.isSimulcast ? 'simulcast' : 'singlecast';
+        cellId = `wrtc_${test.codecKey}_${test.resKey}${modeStr}_${txMode}`;
     }
 
     const cell = document.getElementById(cellId);
@@ -509,7 +545,8 @@ function appendToListGrid(test) {
 
     const colMode = document.createElement('div');
     colMode.className = 'list-item-val';
-    colMode.textContent = test.scalabilityMode || 'Standard';
+    const txSuffix = test.apiType === 'WebRTC' ? (test.isSimulcast ? ' (Simulcast)' : ' (Single)') : '';
+    colMode.textContent = (test.scalabilityMode || 'Standard') + txSuffix;
     row.appendChild(colMode);
 
     const colHw = document.createElement('div');

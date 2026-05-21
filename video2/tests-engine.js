@@ -81,24 +81,27 @@ export class CapabilityTestEngine {
                     } else if (apiType === 'WebRTC') {
                         // WebRTC tests
                         const modes = selections.scalabilityModes.length > 0 ? selections.scalabilityModes : [null];
+                        const txModes = selections.transmissionModes && selections.transmissionModes.length > 0 ? selections.transmissionModes : ['singlecast'];
                         for (const mode of modes) {
-                            testIdCounter++;
-                            const testConfig = {
-                                id: `wrtc_${testIdCounter}`,
-                                apiType: 'WebRTC',
-                                codecKey,
-                                resKey,
-                                width: resSpec.width,
-                                height: resSpec.height,
-                                bitrate: resSpec.bitrate,
-                                scalabilityMode: mode,
-                                isSimulcast: false, // Can be toggled if simulcast option requested
-                                hardwareAcceleration: 'no-preference', // N/A for standard WebRTC sender config
-                                status: 'pending',
-                                logs: [],
-                                error: null
-                            };
-                            this.queue.push(testConfig);
+                            for (const txMode of txModes) {
+                                testIdCounter++;
+                                const testConfig = {
+                                    id: `wrtc_${testIdCounter}`,
+                                    apiType: 'WebRTC',
+                                    codecKey,
+                                    resKey,
+                                    width: resSpec.width,
+                                    height: resSpec.height,
+                                    bitrate: resSpec.bitrate,
+                                    scalabilityMode: mode,
+                                    isSimulcast: txMode === 'simulcast',
+                                    hardwareAcceleration: 'no-preference', // N/A for standard WebRTC sender config
+                                    status: 'pending',
+                                    logs: [],
+                                    error: null
+                                };
+                                this.queue.push(testConfig);
+                            }
                         }
                     }
                 }

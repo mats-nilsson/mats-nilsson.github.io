@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC &amp; WebCodecs Capability Analyzer</title>
+    <meta name="description" content="A premium, comprehensive capability testing dashboard for WebRTC and WebCodecs across various H265, VP9, AV1, VP8, and H264 configurations.">
+    
+    <!-- Premium Google Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Main Style Sheet -->
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation / Header -->
+        <header class="app-header">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <!-- Creative WebRTC/WebCodecs SVG Icon -->
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 8V6C4 4.89543 4.89543 4 6 4H8" stroke="var(--accent-color)" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M20 8V6C20 4.89543 19.1046 4 18 4H16" stroke="var(--accent-color)" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M4 16V18C4 19.1046 4.89543 20 6 20H8" stroke="var(--accent-color)" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M20 16V18C20 19.1046 19.1046 20 18 20H16" stroke="var(--accent-color)" stroke-width="2" stroke-linecap="round"/>
+                        <circle cx="12" cy="12" r="3" fill="var(--accent-color)"/>
+                        <path d="M12 5V7" stroke="var(--accent-color-light)" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M12 17V19" stroke="var(--accent-color-light)" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M5 12H7" stroke="var(--accent-color-light)" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M17 12H19" stroke="var(--accent-color-light)" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <h1>MediaEngine <span class="gradient-text">Analyzer</span></h1>
+                    <p class="tagline">WebRTC &amp; WebCodecs Capabilities Explorer</p>
+                </div>
+            </div>
+            <div class="stats-summary-bar" id="statsSummaryBar">
+                <div class="stat-box">
+                    <span class="stat-label">Pending</span>
+                    <span class="stat-val" id="statPendingCount">0</span>
+                </div>
+                <div class="stat-box text-primary">
+                    <span class="stat-label">Testing</span>
+                    <span class="stat-val" id="statTestingCount">0</span>
+                </div>
+                <div class="stat-box text-success">
+                    <span class="stat-label">Passed</span>
+                    <span class="stat-val" id="statPassedCount">0</span>
+                </div>
+                <div class="stat-box text-danger">
+                    <span class="stat-label">Failed</span>
+                    <span class="stat-val" id="statFailedCount">0</span>
+                </div>
+                <div class="stat-box text-muted">
+                    <span class="stat-label">Unsupported</span>
+                    <span class="stat-val" id="statUnsupportedCount">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Layout -->
+        <main class="dashboard-layout">
+            <!-- Left Sidebar: Configuration -->
+            <aside class="config-panel glass">
+                <!-- Diagnostics Environment Probe Panel -->
+                <div class="diagnostics-card" id="diagnosticsCard">
+                    <h3 class="diagnostics-title">Environment Diagnostics</h3>
+                    <div class="diag-grid">
+                        <div class="diag-item">
+                            <span class="label">Secure Context</span>
+                            <span class="badge badge-pending" id="diagContext">-</span>
+                        </div>
+                        <div class="diag-item">
+                            <span class="label">WebCodecs API</span>
+                            <span class="badge badge-pending" id="diagWebCodecs">-</span>
+                        </div>
+                        <div class="diag-item">
+                            <span class="label">WebRTC API</span>
+                            <span class="badge badge-pending" id="diagWebRTC">-</span>
+                        </div>
+                    </div>
+                    <div class="diag-gpu" id="diagGpu">GPU: Probing...</div>
+                </div>
+
+                <h2 class="section-title">Test Configuration</h2>
+                
+                <!-- Test Mode Selector -->
+                <div class="config-group">
+                    <h3>API Types</h3>
+                    <div class="checkbox-grid">
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="cfgWebCodecs" checked>
+                            <span>WebCodecs</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="cfgWebRTC" checked>
+                            <span>WebRTC</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Codec Checkboxes -->
+                <div class="config-group">
+                    <h3>Codecs</h3>
+                    <div class="checkbox-grid vertical">
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="codecH265" checked>
+                            <span>H.265 / HEVC</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="codecVP9" checked>
+                            <span>VP9</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="codecAV1" checked>
+                            <span>AV1</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="codecH264" checked>
+                            <span>H.264</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="codecVP8" checked>
+                            <span>VP8</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Hardware Preferences -->
+                <div class="config-group">
+                    <h3>Hardware Preference (WebCodecs)</h3>
+                    <div class="checkbox-grid vertical">
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="hwPreferHardware" checked>
+                            <span>Prefer Hardware</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="hwPreferSoftware" checked>
+                            <span>Prefer Software</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="hwNoPreference" checked>
+                            <span>No Preference</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Resoltuions -->
+                <div class="config-group">
+                    <h3>Resolutions</h3>
+                    <div class="checkbox-grid">
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="res1080p" checked>
+                            <span>1080p</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="res720p" checked>
+                            <span>720p</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="res360p" checked>
+                            <span>360p</span>
+                        </label>
+                        <label class="checkbox-btn">
+                            <input type="checkbox" id="res180p" checked>
+                            <span>180p</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Scalability Modes -->
+                <div class="config-group">
+                    <h3>Scalability Modes</h3>
+                    <div class="select-all-buttons">
+                        <button type="button" class="btn-mini" id="btnSelectAllScalability">All</button>
+                        <button type="button" class="btn-mini" id="btnSelectNoneScalability">None</button>
+                    </div>
+                    <div class="checkbox-grid vertical scrollable" id="scalabilityContainer">
+                        <!-- Populated dynamically from codec-utils -->
+                    </div>
+                </div>
+
+                <!-- Execution Settings -->
+                <div class="config-group">
+                    <h3>Settings</h3>
+                    <div class="settings-inputs">
+                        <div class="input-field">
+                            <label for="cfgConcurrency">Concurrency</label>
+                            <input type="number" id="cfgConcurrency" min="1" max="5" value="2">
+                        </div>
+                        <div class="input-field">
+                            <label for="cfgTimeout">Timeout (s)</label>
+                            <input type="number" id="cfgTimeout" min="5" max="30" value="10">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="action-buttons">
+                    <button id="btnRunSuite" class="btn btn-primary">Run Test Suite</button>
+                    <button id="btnCancelSuite" class="btn btn-secondary" disabled>Cancel Suite</button>
+                </div>
+            </aside>
+
+            <!-- Right Section: Dashboard Viewer -->
+            <section class="dashboard-viewer">
+                <!-- View Controls & Status -->
+                <div class="view-header glass">
+                    <div class="view-toggle-buttons">
+                        <button id="btnViewMatrix" class="btn-view active">Matrix View</button>
+                        <button id="btnViewList" class="btn-view">List View</button>
+                    </div>
+                    <div class="export-actions">
+                        <button id="btnExportJSON" class="btn-mini-action" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Export JSON
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Matrix View Container -->
+                <div id="matrixViewContainer" class="results-container matrix-active">
+                    <!-- Dynamically populated interactive tables -->
+                    <div class="empty-state" id="matrixEmptyState">
+                        <p>No test runs yet. Click "Run Test Suite" to analyze capabilities.</p>
+                    </div>
+                </div>
+
+                <!-- List View Container -->
+                <div id="listViewContainer" class="results-container list-hidden scrollable">
+                    <!-- Filter bar for list view -->
+                    <div class="list-filter-bar">
+                        <input type="text" id="listSearchInput" placeholder="Filter by codec, resolution, mode...">
+                        <select id="listStatusFilter">
+                            <option value="all">All Statuses</option>
+                            <option value="passed">Passed</option>
+                            <option value="failed">Failed</option>
+                            <option value="unsupported">Unsupported</option>
+                            <option value="pending">Pending/Testing</option>
+                        </select>
+                    </div>
+                    <div class="list-grid" id="listGrid">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Interactive Overlay Detail Modal -->
+    <div id="detailModal" class="modal-overlay">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h3 id="modalTitle">Test Details</h3>
+                <button class="close-button" id="btnModalClose">&times;</button>
+            </div>
+            <div class="modal-body scrollable">
+                <div class="modal-summary-grid">
+                    <div class="summary-item">
+                        <span class="label">Codec</span>
+                        <span class="value" id="modalCodec">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">API Type</span>
+                        <span class="value" id="modalApiType">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Resolution</span>
+                        <span class="value" id="modalResolution">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Scalability Mode</span>
+                        <span class="value" id="modalScalability">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Hardware Preference</span>
+                        <span class="value" id="modalHwPref">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Status</span>
+                        <span class="value badge" id="modalStatus">-</span>
+                    </div>
+                </div>
+
+                <div class="modal-section">
+                    <h4>Execution Logs</h4>
+                    <pre class="log-terminal" id="modalLogs"></pre>
+                </div>
+
+                <div class="modal-section" id="modalErrorSection">
+                    <h4>Error Details</h4>
+                    <div class="error-box" id="modalErrorText"></div>
+                </div>
+
+                <div class="modal-section">
+                    <h4>Configuration Payload</h4>
+                    <pre class="code-box" id="modalPayload"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden canvas for generating video frames for WebCodecs and WebRTC -->
+    <canvas id="sharedCanvas" width="1920" height="1080" style="display:none;"></canvas>
+
+    <!-- Interactive Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Web Application Script Modules -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>

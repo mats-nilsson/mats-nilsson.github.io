@@ -73,6 +73,8 @@ const elements = {
     modalWarningBox: document.getElementById('modalWarningBox'),
     modalContrastSection: document.getElementById('modalContrastSection'),
     modalContrastBody: document.getElementById('modalContrastBody'),
+    modalTimelineSection: document.getElementById('modalTimelineSection'),
+    modalTimelineContainer: document.getElementById('modalTimelineContainer'),
 
     toastContainer: document.getElementById('toastContainer')
 };
@@ -97,7 +99,7 @@ function populateScalabilityCheckboxes() {
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.value = mode;
-        input.checked = ['L1T1', 'L1T3', 'L3T3'].includes(mode); // Default selections
+        input.checked = ['L1T1', 'L1T2', 'L1T3'].includes(mode); // Default selections
         
         const span = document.createElement('span');
         span.textContent = mode;
@@ -549,7 +551,10 @@ function refreshListView() {
             test.resKey.toLowerCase().includes(query) ||
             (test.scalabilityMode && test.scalabilityMode.toLowerCase().includes(query));
 
-        const matchesStatus = statusFilter === 'all' || test.status === statusFilter;
+        const matchesStatus = statusFilter === 'all' || 
+            (statusFilter === 'deviations' && test.status === 'passed' && test.stats && test.stats.hasPermanentDeviations) ||
+            (statusFilter === 'passed' && test.status === 'passed' && (!test.stats || !test.stats.hasPermanentDeviations)) ||
+            (statusFilter !== 'deviations' && statusFilter !== 'passed' && test.status === statusFilter);
 
         if (matchesQuery && matchesStatus) {
             row.style.display = 'grid';
@@ -691,6 +696,38 @@ function openDetailModal(test) {
         const decImpl = test.stats.decoderImplementation || 'unknown';
         addContrastRow('Active Encoder', test.apiType === 'WebCodecs' ? 'User Preferred' : 'WebRTC Auto', encImpl, true, 'INFO');
         addContrastRow('Active Decoder', test.apiType === 'WebCodecs' ? 'User Preferred' : 'WebRTC Auto', decImpl, true, 'INFO');
+    }
+
+    // Reset and Populate Resolution Timeline Visualizer
+    elements.modalTimelineSection.style.display = 'none';
+    elements.modalTimelineContainer.replaceChildren();
+
+    if (test.stats && test.stats.resolutionHistory && test.stats.resolutionHistory.length > 0) {
+        elements.modalTimelineSection.style.display = 'block';
+
+        test.stats.resolutionHistory.forEach((step, idx) => {
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'timeline-step';
+
+            const spanTime = document.createElement('span');
+            spanTime.className = 'time';
+            spanTime.textContent = `${step.time}s`;
+            stepDiv.appendChild(spanTime);
+
+            const spanRes = document.createElement('span');
+            spanRes.className = 'res';
+            spanRes.textContent = step.res;
+            stepDiv.appendChild(spanRes);
+
+            elements.modalTimelineContainer.appendChild(stepDiv);
+
+            if (idx < test.stats.resolutionHistory.length - 1) {
+                const arrow = document.createElement('span');
+                arrow.className = 'timeline-arrow';
+                arrow.textContent = '➔';
+                elements.modalTimelineContainer.appendChild(arrow);
+            }
+        });
     }
 
     // Status badge mapping

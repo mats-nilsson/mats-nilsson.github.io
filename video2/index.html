@@ -241,7 +241,8 @@
                         <input type="text" id="listSearchInput" placeholder="Filter by codec, resolution, mode...">
                         <select id="listStatusFilter">
                             <option value="all">All Statuses</option>
-                            <option value="passed">Passed</option>
+                            <option value="passed">Passed (No Deviations)</option>
+                            <option value="deviations">Deviations / Warnings</option>
                             <option value="failed">Failed</option>
                             <option value="unsupported">Unsupported</option>
                             <option value="pending">Pending/Testing</option>
@@ -310,6 +311,14 @@
                                 <!-- Populated dynamically -->
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- Dynamic Resolution Ramp-up Timeline Section -->
+                <div class="modal-section" id="modalTimelineSection" style="display:none;">
+                    <h4>Resolution Rampup Timeline</h4>
+                    <div class="timeline-container" id="modalTimelineContainer">
+                        <!-- Populated dynamically -->
                     </div>
                 </div>
 

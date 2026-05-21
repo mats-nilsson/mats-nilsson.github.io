@@ -883,6 +883,46 @@ body {
     overflow-x: auto;
 }
 
+/* Timeline Rampup Visualization Styles */
+.timeline-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.85rem;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    align-items: center;
+}
+
+.timeline-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 0.35rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+}
+
+.timeline-step .time {
+    color: var(--accent-color-light);
+    font-weight: 600;
+}
+
+.timeline-step .res {
+    color: #ffffff;
+    font-weight: 500;
+}
+
+.timeline-arrow {
+    color: rgba(255, 255, 255, 0.15);
+    font-size: 0.8rem;
+    font-weight: bold;
+    user-select: none;
+}
+
 /* Floating Toast Notification System */
 .toast-container {
     position: fixed;

@@ -70,18 +70,7 @@ export function runWebRTCTest(testParams) {
             }
         };
 
-        // Timeout configuration
-        const timeoutTracker = setTimeout(() => {
-            if (isFinished) return;
-            isFinished = true;
-            cleanup();
-            log(`WebRTC test timed out after ${testParams.timeoutMs}ms`);
-            resolve({
-                success: false,
-                logs,
-                error: 'Timed out waiting for connection, media flow, or correct codec negotiate.'
-            });
-        }, testParams.timeoutMs);
+
 
         try {
             // 1. Get Canvas Capture Stream
@@ -217,14 +206,19 @@ export function runWebRTCTest(testParams) {
             log('Waiting for connection state to stabilize to connected/completed...');
 
             // Poll stats to check bytesSent and negotiate codecs
-            let verifiedSuccess = false;
             let checkCount = 0;
             let lastBytesSent = 0;
-            let activeFlowChecks = 0;
+            let mediaFlowing = false;
+            const resolutionHistory = [];
+            const maxChecks = Math.ceil(testParams.timeoutMs / 500);
+            log(`Starting stats polling loop. Max checks until timeout: ${maxChecks}`);
 
             statsInterval = setInterval(async () => {
                 if (isFinished) return;
                 checkCount++;
+
+                const elapsedMs = checkCount * 500;
+                const isTimeoutReached = checkCount >= maxChecks;
 
                 const state1 = pc1.iceConnectionState;
                 const state2 = pc2.iceConnectionState;
@@ -274,6 +268,23 @@ export function runWebRTCTest(testParams) {
                                 decoderImpl = inboundRtp.decoderImplementation || 'unknown';
                             }
 
+                            const currentRes = `${width}x${height}`;
+                            const elapsedMs = checkCount * 500;
+                            const elapsedSec = (elapsedMs / 1000).toFixed(1);
+
+                            // Record resolution history when it changes
+                            if (width > 0 && height > 0) {
+                                if (resolutionHistory.length === 0 || resolutionHistory[resolutionHistory.length - 1].res !== currentRes) {
+                                    resolutionHistory.push({ time: elapsedSec, res: currentRes });
+                                    log(`Resolution change measured: ${currentRes} at ${elapsedSec}s`);
+                                }
+                            }
+
+                            // Validate media flow
+                            if (bytesSent > lastBytesSent && framesEncoded > 0) {
+                                mediaFlowing = true;
+                            }
+
                             // Diagnostic properties dumper
                             if (checkCount === 2 || checkCount === 6) {
                                 try {
@@ -299,120 +310,129 @@ export function runWebRTCTest(testParams) {
                                 }
                             }
 
-                            log(`Stats update #${checkCount}: Bytes Sent = ${bytesSent}, Encoded Frames = ${framesEncoded}, Resolution = ${width}x${height}, Codec MIME = ${codecMime}, Encoder = ${encoderImpl}, Decoder = ${decoderImpl}`);
+                            log(`Stats update #${checkCount} (${elapsedSec}s): Bytes Sent = ${bytesSent}, Encoded Frames = ${framesEncoded}, Resolution = ${currentRes}, Codec = ${codecMime}, Encoder = ${encoderImpl}, Decoder = ${decoderImpl}`);
 
-                            // Success Criteria:
-                            // 1. We have sent bytes and encoded frames.
-                            // 2. The bytesSent count is actively increasing.
-                            // 3. The codec used contains the target codec name.
-                            if (bytesSent > lastBytesSent && framesEncoded > 0) {
-                                const isMatchingCodec = codecMime.toLowerCase().includes(spec.webrtcCodecName.toLowerCase());
-                                
-                                if (isMatchingCodec) {
-                                    activeFlowChecks++;
+                            // Success criteria validations
+                            const isMatchingCodec = codecMime.toLowerCase().includes(spec.webrtcCodecName.toLowerCase());
+                            const targetWidth = testParams.width;
+                            const targetHeight = testParams.height;
+                            const targetResReached = width === targetWidth && height === targetHeight;
+
+                            // Case 1: Target resolution reached successfully! Escape early and resolve cleanly!
+                            if (isMatchingCodec && targetResReached) {
+                                const bothStatsPopulated = encoderImpl !== 'unknown' && decoderImpl !== 'unknown';
+                                const allowResolve = bothStatsPopulated || checkCount >= 4;
+
+                                if (allowResolve) {
+                                    log(`Target resolution ${targetWidth}x${targetHeight} reached successfully in ${elapsedSec}s! Resolving cleanly.`);
                                     
-                                    // Smart wait: wait until browser populates both stats asynchronously, OR 10 checks (5.0s) have passed.
-                                    // Giving the WebRTC slow-start BWE estimator plenty of time to ramp up the resolution.
-                                    const bothStatsPopulated = encoderImpl !== 'unknown' && decoderImpl !== 'unknown';
-                                    const shouldResolve = bothStatsPopulated || activeFlowChecks >= 10;
+                                    const targetScalability = testParams.scalabilityMode || 'L1T1';
+                                    let activeScalability = outboundRtp.scalabilityMode || 'unknown';
+                                    const warnings = [];
+                                    let hasPermanentDeviations = false;
 
-                                    if (shouldResolve) {
-                                        log(`CRITICAL: Positive media flow verified using negotiated codec: ${codecMime}`);
-                                        log(` negotiated details -> Encoder: ${encoderImpl} | Decoder: ${decoderImpl}`);
-
-                                        const warnings = [];
-                                        let hasPermanentDeviations = false;
-
-                                        // 1. Resolution Downscaling Verification
-                                        const activeWidth = width;
-                                        const activeHeight = height;
-                                        const targetWidth = testParams.width;
-                                        const targetHeight = testParams.height;
-
-                                        if (activeWidth > 0 && activeHeight > 0 && (activeWidth < targetWidth || activeHeight < targetHeight)) {
-                                            const limitReason = outboundRtp.qualityLimitationReason || 'unknown';
-                                            const warningMsg = `⚠️ WebRTC automatically scaled down output resolution from ${targetWidth}x${targetHeight} to ${activeWidth}x${activeHeight} (Quality Limitation Reason: ${limitReason}).`;
+                                    // Validate scalability mode
+                                    if (targetScalability !== 'L1T1') {
+                                        const isSVCSupportedCodec = testParams.codecKey === 'VP9' || testParams.codecKey === 'AV1';
+                                        if (!isSVCSupportedCodec) {
+                                            const warningMsg = `⚠️ WebRTC silently bypassed the requested Scalability Mode (${targetScalability}) and fell back to standard singlecast L1T1 (H.264, H.265, and VP8 do not support SVC in WebRTC).`;
                                             warnings.push(warningMsg);
-                                            log(`WARNING: ${warningMsg}`);
+                                            activeScalability = 'L1T1 (Silent Fallback)';
+                                            hasPermanentDeviations = true;
+                                        } else if (activeScalability !== 'unknown' && activeScalability !== targetScalability) {
+                                            const warningMsg = `⚠️ WebRTC downgraded Scalability Mode from requested ${targetScalability} to active ${activeScalability}.`;
+                                            warnings.push(warningMsg);
                                             hasPermanentDeviations = true;
                                         }
-
-                                        // 2. Scalability Mode Downgrade Verification
-                                        const targetScalability = testParams.scalabilityMode || 'L1T1';
-                                        let activeScalability = outboundRtp.scalabilityMode || 'unknown';
-                                        
-                                        if (targetScalability !== 'L1T1') {
-                                            const isSVCSupportedCodec = testParams.codecKey === 'VP9' || testParams.codecKey === 'AV1';
-                                            if (!isSVCSupportedCodec) {
-                                                const warningMsg = `⚠️ WebRTC silently bypassed the requested Scalability Mode (${targetScalability}) and fell back to standard singlecast L1T1 (H.264, H.265, and VP8 do not support SVC in WebRTC).`;
-                                                warnings.push(warningMsg);
-                                                log(`WARNING: ${warningMsg}`);
-                                                activeScalability = 'L1T1 (Silent Fallback)';
-                                                hasPermanentDeviations = true;
-                                            } else if (activeScalability !== 'unknown' && activeScalability !== targetScalability) {
-                                                const warningMsg = `⚠️ WebRTC downgraded Scalability Mode from requested ${targetScalability} to active ${activeScalability}.`;
-                                                warnings.push(warningMsg);
-                                                log(`WARNING: ${warningMsg}`);
-                                                hasPermanentDeviations = true;
-                                            } else if (activeScalability === 'unknown') {
-                                                log(`NOTE: Requested SVC mode ${targetScalability} is statically supported, but runtime stats did not report scalabilityMode.`);
-                                            }
-                                        } else {
-                                            if (activeScalability === 'unknown') activeScalability = 'L1T1 (Standard)';
-                                        }
-
-                                        verifiedSuccess = true;
-                                        isFinished = true;
-                                        clearTimeout(timeoutTracker);
-                                        cleanup();
-                                        resolve({
-                                            success: true,
-                                            logs,
-                                            stats: {
-                                                bytesSent,
-                                                framesEncoded,
-                                                negotiatedCodec: codecMime,
-                                                resolution: `${width}x${height}`,
-                                                encoderImplementation: encoderImpl,
-                                                decoderImplementation: decoderImpl,
-                                                // Contrast parameters
-                                                targetWidth,
-                                                targetHeight,
-                                                activeWidth,
-                                                activeHeight,
-                                                targetScalability,
-                                                activeScalability,
-                                                warnings,
-                                                hasPermanentDeviations
-                                            }
-                                        });
-                                        return;
                                     } else {
-                                        log(`Awaiting asynchronously populated codec implementation details (Current active checks: ${activeFlowChecks})...`);
+                                        if (activeScalability === 'unknown') activeScalability = 'L1T1 (Standard)';
                                     }
+
+                                    isFinished = true;
+                                    cleanup();
+                                    resolve({
+                                        success: true,
+                                        logs,
+                                        stats: {
+                                            bytesSent,
+                                            framesEncoded,
+                                            negotiatedCodec: codecMime,
+                                            resolution: currentRes,
+                                            encoderImplementation: encoderImpl,
+                                            decoderImplementation: decoderImpl,
+                                            targetWidth, targetHeight, activeWidth: width, activeHeight: height,
+                                            targetScalability, activeScalability,
+                                            warnings, hasPermanentDeviations,
+                                            resolutionHistory
+                                        }
+                                    });
+                                    return;
                                 } else {
-                                    log(`WARNING: Active media detected, but codec is ${codecMime} instead of target ${spec.webrtcCodecName}. Awaiting codec switch...`);
+                                    log(`Target resolution achieved. Awaiting asynchronous encoder/decoder implementation details...`);
                                 }
                             }
-                            lastBytesSent = bytesSent;
+
+                            // Case 2: Timeout reached but media is flowing (Resolution remains permanently throttled/downscaled)
+                            if (isTimeoutReached && mediaFlowing && isMatchingCodec) {
+                                log(`Allotted timeout (${elapsedSec}s) expired. Output resolution remained throttled at ${currentRes}. Resolving as passed with warnings.`);
+
+                                const targetScalability = testParams.scalabilityMode || 'L1T1';
+                                let activeScalability = outboundRtp.scalabilityMode || 'unknown';
+                                const warnings = [];
+                                let hasPermanentDeviations = true; // Permanent downscale throttle!
+
+                                const limitReason = outboundRtp.qualityLimitationReason || 'unknown';
+                                warnings.push(`⚠️ WebRTC failed to scale up resolution to target ${targetWidth}x${targetHeight} in the allotted time. Output remained throttled at ${currentRes} (Quality Limitation Reason: ${limitReason}).`);
+
+                                if (targetScalability !== 'L1T1') {
+                                    const isSVCSupportedCodec = testParams.codecKey === 'VP9' || testParams.codecKey === 'AV1';
+                                    if (!isSVCSupportedCodec) {
+                                        warnings.push(`⚠️ WebRTC silently bypassed the requested Scalability Mode (${targetScalability}) and fell back to standard singlecast L1T1 (H.264, H.265, and VP8 do not support SVC in WebRTC).`);
+                                        activeScalability = 'L1T1 (Silent Fallback)';
+                                    } else if (activeScalability !== 'unknown' && activeScalability !== targetScalability) {
+                                        warnings.push(`⚠️ WebRTC downgraded Scalability Mode from requested ${targetScalability} to active ${activeScalability}.`);
+                                    }
+                                } else {
+                                    if (activeScalability === 'unknown') activeScalability = 'L1T1 (Standard)';
+                                }
+
+                                isFinished = true;
+                                cleanup();
+                                resolve({
+                                    success: true,
+                                    logs,
+                                    stats: {
+                                        bytesSent,
+                                        framesEncoded,
+                                        negotiatedCodec: codecMime,
+                                        resolution: currentRes,
+                                        encoderImplementation: encoderImpl,
+                                        decoderImplementation: decoderImpl,
+                                        targetWidth, targetHeight, activeWidth: width, activeHeight: height,
+                                        targetScalability, activeScalability,
+                                        warnings, hasPermanentDeviations,
+                                        resolutionHistory
+                                    }
+                                });
+                                return;
+                            }
                         }
                     } catch (err) {
-                        log(`Error retrieving connection statistics: ${err.message}`);
+                        log(`Error in statistics polling loop: ${err.message}`);
                     }
                 } else {
                     log(`Waiting... Current ICE connection states: pc1=${state1}, pc2=${state2}`);
                 }
 
-                // Handle negotiation failures (connection established but no packets/wrong codecs)
-                if (checkCount > 20) {
-                    log('Failure: Exceeded maximum stats validation checks without positive verified target media flow.');
+                // Case 3: Timeout reached and NO media is flowing (Genuine Timeout Failure)
+                if (isTimeoutReached) {
+                    log(`Allotted timeout (${(elapsedMs / 1000).toFixed(1)}s) expired without loopback media flow. Failing test.`);
                     isFinished = true;
-                    clearTimeout(timeoutTracker);
                     cleanup();
                     resolve({
                         success: false,
                         logs,
-                        error: `Negotiation failure. ICE connection established but target codec (${spec.webrtcCodecName}) did not transmit frames. Check if browser disabled/unsupported it.`
+                        error: `Timeout expired. ICE state: pc1=${state1}, pc2=${state2}. Media Flowing: ${mediaFlowing}.`
                     });
                 }
             }, 500); // Check stats every 500ms
@@ -420,7 +440,6 @@ export function runWebRTCTest(testParams) {
         } catch (err) {
             log(`Catch block caught error: ${err.message || err.toString()}`);
             cleanup();
-            clearTimeout(timeoutTracker);
             resolve({ success: false, logs, error: err.message || err.toString() });
         }
     });

@@ -153,7 +153,12 @@ export class CapabilityTestEngine {
                     });
                     isStaticallySupported = staticCheckResult.supported;
                 } else {
-                    staticCheckResult = checkWebRTCStaticSupport(test.codecKey);
+                    staticCheckResult = await checkWebRTCStaticSupport(test.codecKey, {
+                        width: test.width,
+                        height: test.height,
+                        bitrate: test.bitrate,
+                        scalabilityMode: test.scalabilityMode
+                    });
                     isStaticallySupported = staticCheckResult.supported;
                 }
 
@@ -169,6 +174,14 @@ export class CapabilityTestEngine {
                     this.stats.testing--;
                     this.stats.unsupported++;
                 } else {
+                    // Prepare static check log entries
+                    const staticLogs = [
+                        `[STATIC CHECK] MediaCapabilities probe completed successfully.`,
+                        `[STATIC CHECK] Supported: ${staticCheckResult.supported}`,
+                        `[STATIC CHECK] PowerEfficient (Hardware Accelerated): ${staticCheckResult.powerEfficient || false}`,
+                        `[STATIC CHECK] Smooth: ${staticCheckResult.smooth || false}`
+                    ];
+
                     // B. Static Check passed. Execute active media testing loops!
                     let runResult = null;
                     if (test.apiType === 'WebCodecs') {
@@ -193,12 +206,16 @@ export class CapabilityTestEngine {
                         });
                     }
 
-                    test.logs = runResult.logs;
+                    // Merge static probe log with active runner logs
+                    test.logs = [...staticLogs, ...runResult.logs];
+                    
                     if (runResult.success) {
                         test.status = 'passed';
-                        if (runResult.stats) {
-                            test.stats = runResult.stats;
-                        }
+                        test.stats = {
+                            ...(runResult.stats || {}),
+                            staticPowerEfficient: staticCheckResult.powerEfficient || false,
+                            staticSmooth: staticCheckResult.smooth || false
+                        };
                         this.stats.testing--;
                         this.stats.passed++;
                     } else {

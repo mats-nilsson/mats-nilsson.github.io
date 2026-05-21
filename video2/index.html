@@ -290,6 +290,29 @@
                     </div>
                 </div>
 
+                <!-- Outbound / Loopback Warning Section -->
+                <div class="warning-box" id="modalWarningBox" style="display:none; margin-top: 1rem;"></div>
+
+                <!-- Side-by-Side Property Contrast Section -->
+                <div class="modal-section" id="modalContrastSection" style="display:none;">
+                    <h4>Configuration vs. Active Negotiation</h4>
+                    <div class="matrix-table-wrapper">
+                        <table class="matrix-table">
+                            <thead>
+                                <tr>
+                                    <th>Property Parameter</th>
+                                    <th>Target Configured</th>
+                                    <th>Active Negotiated</th>
+                                    <th>Comparison Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalContrastBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="modal-section">
                     <h4>Execution Logs</h4>
                     <pre class="log-terminal" id="modalLogs"></pre>

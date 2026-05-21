@@ -116,9 +116,10 @@ export async function checkWebCodecsStaticSupport(codecKey, config) {
 }
 
 /**
- * Verifies WebRTC capabilities statically
+ * Verifies WebRTC capabilities statically, leveraging the W3C Media Capabilities API
+ * to check supported, smooth, and powerEfficient (hardware accelerated) statuses.
  */
-export function checkWebRTCStaticSupport(codecKey) {
+export async function checkWebRTCStaticSupport(codecKey, config = {}) {
     if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) {
         return { supported: false, error: 'RTCRtpSender capabilities API is not supported' };
     }
@@ -126,19 +127,68 @@ export function checkWebRTCStaticSupport(codecKey) {
     const spec = CODECS[codecKey];
     if (!spec) return { supported: false, error: `Unknown codec key: ${codecKey}` };
 
-    const capabilities = RTCRtpSender.getCapabilities('video');
-    if (!capabilities || !capabilities.codecs) {
-        return { supported: false, error: 'Unable to retrieve browser WebRTC video capabilities' };
+    // Standard fallback prober
+    const runLegacyProber = () => {
+        const capabilities = RTCRtpSender.getCapabilities('video');
+        if (!capabilities || !capabilities.codecs) return { supported: false, error: 'No capabilities' };
+        const ok = capabilities.codecs.some(c => c.mimeType.toLowerCase().includes(spec.webrtcCodecName.toLowerCase()));
+        return {
+            supported: ok,
+            smooth: true,
+            powerEfficient: false,
+            error: ok ? null : `${spec.name} is not supported inside WebRTC on this browser`
+        };
+    };
+
+    // Check if navigator.mediaCapabilities is available
+    if (typeof navigator === 'undefined' || !navigator.mediaCapabilities || !navigator.mediaCapabilities.encodingInfo) {
+        return runLegacyProber();
     }
 
-    const isSupported = capabilities.codecs.some(c => {
-        return c.mimeType.toLowerCase().includes(spec.webrtcCodecName.toLowerCase());
-    });
+    try {
+        const capabilities = RTCRtpSender.getCapabilities('video');
+        if (!capabilities || !capabilities.codecs) {
+            return runLegacyProber();
+        }
 
-    return {
-        supported: isSupported,
-        error: isSupported ? null : `${spec.name} is not supported inside WebRTC on this browser`
-    };
+        const matchedCodecs = capabilities.codecs.filter(c => 
+            c.mimeType.toLowerCase().includes(spec.webrtcCodecName.toLowerCase())
+        );
+
+        if (matchedCodecs.length === 0) {
+            return { supported: false, error: `${spec.name} codec capabilities absent in RTCRtpSender.` };
+        }
+
+        // Build encoding configuration for W3C Media Capabilities API
+        // Pick the best matched codec profile (e.g., VP9 profile-id=0 or similar)
+        const bestCodecMatch = matchedCodecs[0];
+        const contentType = bestCodecMatch.sdpFmtpLine 
+            ? `${bestCodecMatch.mimeType};${bestCodecMatch.sdpFmtpLine}`
+            : bestCodecMatch.mimeType;
+
+        const encodingConfig = {
+            type: 'webrtc',
+            video: {
+                contentType: contentType,
+                width: config.width || 1280,
+                height: config.height || 720,
+                framerate: config.framerate || 30,
+                bitrate: config.bitrate || 2000000,
+                scalabilityMode: config.scalabilityMode || 'L1T1'
+            }
+        };
+
+        const info = await navigator.mediaCapabilities.encodingInfo(encodingConfig);
+        return {
+            supported: info.supported,
+            smooth: info.smooth,
+            powerEfficient: info.powerEfficient,
+            error: info.supported ? null : 'MediaCapabilities reported WebRTC encoding is not supported for this configuration'
+        };
+    } catch (err) {
+        // Fallback to standard prober in case of exceptions
+        return runLegacyProber();
+    }
 }
 
 /**

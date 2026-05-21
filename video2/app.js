@@ -70,6 +70,9 @@ const elements = {
     modalErrorSection: document.getElementById('modalErrorSection'),
     modalErrorText: document.getElementById('modalErrorText'),
     modalPayload: document.getElementById('modalPayload'),
+    modalWarningBox: document.getElementById('modalWarningBox'),
+    modalContrastSection: document.getElementById('modalContrastSection'),
+    modalContrastBody: document.getElementById('modalContrastBody'),
 
     toastContainer: document.getElementById('toastContainer')
 };
@@ -575,11 +578,103 @@ function openDetailModal(test) {
         const hwLabel = test.hardwareAcceleration === 'prefer-hardware' ? 'Hardware Preferred' : test.hardwareAcceleration === 'prefer-software' ? 'Software Preferred' : 'No Preference';
         elements.modalHwPref.textContent = hwLabel;
     } else {
-        if (test.stats && test.stats.encoderImplementation) {
-            elements.modalHwPref.textContent = `Active Encoder: ${test.stats.encoderImplementation}`;
+        if (test.stats) {
+            const staticHwLabel = test.stats.staticPowerEfficient ? 'Hardware (MediaCaps)' : 'Software / WebRTC Default';
+            const enc = test.stats.encoderImplementation && test.stats.encoderImplementation !== 'unknown'
+                ? test.stats.encoderImplementation
+                : staticHwLabel;
+            const dec = test.stats.decoderImplementation && test.stats.decoderImplementation !== 'unknown'
+                ? test.stats.decoderImplementation
+                : staticHwLabel;
+
+            if (enc === 'Software / WebRTC Default' && dec === 'Software / WebRTC Default') {
+                elements.modalHwPref.textContent = 'WebRTC Default (Software)';
+            } else {
+                elements.modalHwPref.textContent = `Enc: ${enc} | Dec: ${dec}`;
+            }
         } else {
             elements.modalHwPref.textContent = 'WebRTC Engine Auto';
         }
+    }
+
+    // Reset dynamic sections
+    elements.modalWarningBox.style.display = 'none';
+    elements.modalWarningBox.replaceChildren();
+    elements.modalContrastSection.style.display = 'none';
+    elements.modalContrastBody.replaceChildren();
+
+    // Populate Warning block if warnings exist
+    if (test.stats && test.stats.warnings && test.stats.warnings.length > 0) {
+        elements.modalWarningBox.style.display = 'block';
+        test.stats.warnings.forEach(warning => {
+            const p = document.createElement('p');
+            p.textContent = warning;
+            elements.modalWarningBox.appendChild(p);
+        });
+    }
+
+    // Build Side-by-Side Contrast Table
+    if (test.stats) {
+        elements.modalContrastSection.style.display = 'block';
+
+        const createStatusBadge = (isMatch, desc) => {
+            const span = document.createElement('span');
+            span.className = `badge ${isMatch ? 'badge-passed' : 'badge-failed'}`;
+            span.textContent = desc;
+            return span;
+        };
+
+        const addContrastRow = (paramName, targetVal, activeVal, isMatch, statusDesc) => {
+            const tr = document.createElement('tr');
+            
+            const tdParam = document.createElement('td');
+            tdParam.className = 'codec-row-header';
+            tdParam.textContent = paramName;
+            tr.appendChild(tdParam);
+
+            const tdTarget = document.createElement('td');
+            tdTarget.textContent = targetVal;
+            tr.appendChild(tdTarget);
+
+            const tdActive = document.createElement('td');
+            tdActive.textContent = activeVal;
+            tr.appendChild(tdActive);
+
+            const tdStatus = document.createElement('td');
+            tdStatus.appendChild(createStatusBadge(isMatch, statusDesc));
+            tr.appendChild(tdStatus);
+
+            elements.modalContrastBody.appendChild(tr);
+        };
+
+        // A. Video Codec
+        addContrastRow(
+            'Video Codec',
+            CODECS[test.codecKey].name,
+            test.stats.negotiatedCodec || CODECS[test.codecKey].name,
+            true,
+            'MATCH'
+        );
+
+        // B. Output Resolution
+        const targetRes = `${test.stats.targetWidth || test.width}x${test.stats.targetHeight || test.height}`;
+        const activeRes = test.stats.resolution || `${test.width}x${test.height}`;
+        const isResMatch = !test.stats.warnings || !test.stats.warnings.some(w => w.includes('resolution'));
+        const resStatusDesc = isResMatch ? 'MATCH' : 'THROTTLED';
+        addContrastRow('Output Resolution', targetRes, activeRes, isResMatch, resStatusDesc);
+
+        // C. Scalability Mode
+        const targetScalability = test.stats.targetScalability || test.scalabilityMode || 'L1T1';
+        const activeScalability = test.stats.activeScalability || 'unknown';
+        const isScalabilityMatch = !test.stats.warnings || !test.stats.warnings.some(w => w.includes('Scalability'));
+        const scalabilityStatusDesc = isScalabilityMatch ? 'MATCH' : 'BYPASSED';
+        addContrastRow('Scalability Mode', targetScalability, activeScalability, isScalabilityMatch, scalabilityStatusDesc);
+
+        // D. Negotiated Implementations
+        const encImpl = test.stats.encoderImplementation || 'unknown';
+        const decImpl = test.stats.decoderImplementation || 'unknown';
+        addContrastRow('Active Encoder', test.apiType === 'WebCodecs' ? 'User Preferred' : 'WebRTC Auto', encImpl, true, 'INFO');
+        addContrastRow('Active Decoder', test.apiType === 'WebCodecs' ? 'User Preferred' : 'WebRTC Auto', decImpl, true, 'INFO');
     }
 
     // Status badge mapping

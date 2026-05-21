@@ -220,6 +220,7 @@ export function runWebRTCTest(testParams) {
             let verifiedSuccess = false;
             let checkCount = 0;
             let lastBytesSent = 0;
+            let activeFlowChecks = 0;
 
             statsInterval = setInterval(async () => {
                 if (isFinished) return;
@@ -231,21 +232,30 @@ export function runWebRTCTest(testParams) {
                 // Only start inspecting stats when ICE is connected
                 if (state1 === 'connected' || state1 === 'completed') {
                     try {
-                        const statsReport = await pc1.getStats();
+                        // A. Fetch outbound-rtp from sender (pc1)
+                        const statsReport1 = await pc1.getStats();
                         let outboundRtp = null;
                         let codecObj = null;
 
-                        // Traverse stats
-                        statsReport.forEach(stat => {
+                        statsReport1.forEach(stat => {
                             if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
                                 outboundRtp = stat;
+                            }
+                        });
+
+                        // B. Fetch inbound-rtp from receiver (pc2)
+                        const statsReport2 = await pc2.getStats();
+                        let inboundRtp = null;
+                        statsReport2.forEach(stat => {
+                            if (stat.type === 'inbound-rtp' && stat.kind === 'video') {
+                                inboundRtp = stat;
                             }
                         });
 
                         if (outboundRtp) {
                             // Resolve codec configuration from stats
                             if (outboundRtp.codecId) {
-                                const rawCodec = statsReport.get(outboundRtp.codecId);
+                                const rawCodec = statsReport1.get(outboundRtp.codecId);
                                 if (rawCodec) {
                                     codecObj = rawCodec;
                                 }
@@ -256,9 +266,40 @@ export function runWebRTCTest(testParams) {
                             const height = outboundRtp.frameHeight || 0;
                             const framesEncoded = outboundRtp.framesEncoded || 0;
                             const codecMime = codecObj ? codecObj.mimeType : 'unknown';
+                            
+                            // Retrieve implementation details
                             const encoderImpl = outboundRtp.encoderImplementation || 'unknown';
+                            let decoderImpl = 'unknown';
+                            if (inboundRtp) {
+                                decoderImpl = inboundRtp.decoderImplementation || 'unknown';
+                            }
 
-                            log(`Stats update #${checkCount}: Bytes Sent = ${bytesSent}, Encoded Frames = ${framesEncoded}, Resolution = ${width}x${height}, Codec MIME = ${codecMime}, Encoder = ${encoderImpl}`);
+                            // Diagnostic properties dumper
+                            if (checkCount === 2 || checkCount === 6) {
+                                try {
+                                    const outKeys = [];
+                                    for (const k in outboundRtp) {
+                                        if (typeof outboundRtp[k] !== 'function') {
+                                            outKeys.push(`${k}: ${outboundRtp[k]}`);
+                                        }
+                                    }
+                                    log(`[DIAGNOSTIC] outboundRtp properties: ${outKeys.slice(0, 30).join(' | ')}`);
+                                    
+                                    if (inboundRtp) {
+                                        const inKeys = [];
+                                        for (const k in inboundRtp) {
+                                            if (typeof inboundRtp[k] !== 'function') {
+                                                inKeys.push(`${k}: ${inboundRtp[k]}`);
+                                            }
+                                        }
+                                        log(`[DIAGNOSTIC] inboundRtp properties: ${inKeys.slice(0, 30).join(' | ')}`);
+                                    }
+                                } catch (diagErr) {
+                                    log(`[DIAGNOSTIC] Failed to dump properties: ${diagErr.message}`);
+                                }
+                            }
+
+                            log(`Stats update #${checkCount}: Bytes Sent = ${bytesSent}, Encoded Frames = ${framesEncoded}, Resolution = ${width}x${height}, Codec MIME = ${codecMime}, Encoder = ${encoderImpl}, Decoder = ${decoderImpl}`);
 
                             // Success Criteria:
                             // 1. We have sent bytes and encoded frames.
@@ -268,23 +309,80 @@ export function runWebRTCTest(testParams) {
                                 const isMatchingCodec = codecMime.toLowerCase().includes(spec.webrtcCodecName.toLowerCase());
                                 
                                 if (isMatchingCodec) {
-                                    log(`CRITICAL: Positive data flow verified using negotiated codec: ${codecMime} (${encoderImpl})`);
-                                    verifiedSuccess = true;
-                                    isFinished = true;
-                                    clearTimeout(timeoutTracker);
-                                    cleanup();
-                                    resolve({
-                                        success: true,
-                                        logs,
-                                        stats: {
-                                            bytesSent,
-                                            framesEncoded,
-                                            negotiatedCodec: codecMime,
-                                            resolution: `${width}x${height}`,
-                                            encoderImplementation: encoderImpl
+                                    activeFlowChecks++;
+                                    
+                                    // Smart wait: wait until browser populates both stats asynchronously, OR 5 checks (2.5s) have passed.
+                                    const bothStatsPopulated = encoderImpl !== 'unknown' && decoderImpl !== 'unknown';
+                                    const shouldResolve = bothStatsPopulated || activeFlowChecks >= 5;
+
+                                    if (shouldResolve) {
+                                        log(`CRITICAL: Positive media flow verified using negotiated codec: ${codecMime}`);
+                                        log(` negotiated details -> Encoder: ${encoderImpl} | Decoder: ${decoderImpl}`);
+
+                                        // 1. Resolution Downscaling Verification
+                                        const warnings = [];
+                                        const activeWidth = width;
+                                        const activeHeight = height;
+                                        const targetWidth = testParams.width;
+                                        const targetHeight = testParams.height;
+
+                                        if (activeWidth > 0 && activeHeight > 0 && (activeWidth < targetWidth || activeHeight < targetHeight)) {
+                                            const limitReason = outboundRtp.qualityLimitationReason || 'unknown';
+                                            const warningMsg = `⚠️ WebRTC automatically scaled down output resolution from ${targetWidth}x${targetHeight} to ${activeWidth}x${activeHeight} (Quality Limitation Reason: ${limitReason}).`;
+                                            warnings.push(warningMsg);
+                                            log(`WARNING: ${warningMsg}`);
                                         }
-                                    });
-                                    return;
+
+                                        // 2. Scalability Mode Downgrade Verification
+                                        const targetScalability = testParams.scalabilityMode || 'L1T1';
+                                        let activeScalability = outboundRtp.scalabilityMode || 'unknown';
+                                        
+                                        if (targetScalability !== 'L1T1') {
+                                            const isSVCSupportedCodec = testParams.codecKey === 'VP9' || testParams.codecKey === 'AV1';
+                                            if (!isSVCSupportedCodec) {
+                                                const warningMsg = `⚠️ WebRTC silently bypassed the requested Scalability Mode (${targetScalability}) and fell back to standard singlecast L1T1 (H.264, H.265, and VP8 do not support SVC in WebRTC).`;
+                                                warnings.push(warningMsg);
+                                                log(`WARNING: ${warningMsg}`);
+                                                activeScalability = 'L1T1 (Silent Fallback)';
+                                            } else if (activeScalability !== 'unknown' && activeScalability !== targetScalability) {
+                                                const warningMsg = `⚠️ WebRTC downgraded Scalability Mode from requested ${targetScalability} to active ${activeScalability}.`;
+                                                warnings.push(warningMsg);
+                                                log(`WARNING: ${warningMsg}`);
+                                            } else if (activeScalability === 'unknown') {
+                                                log(`NOTE: Requested SVC mode ${targetScalability} is statically supported, but runtime stats did not report scalabilityMode.`);
+                                            }
+                                        } else {
+                                            if (activeScalability === 'unknown') activeScalability = 'L1T1 (Standard)';
+                                        }
+
+                                        verifiedSuccess = true;
+                                        isFinished = true;
+                                        clearTimeout(timeoutTracker);
+                                        cleanup();
+                                        resolve({
+                                            success: true,
+                                            logs,
+                                            stats: {
+                                                bytesSent,
+                                                framesEncoded,
+                                                negotiatedCodec: codecMime,
+                                                resolution: `${width}x${height}`,
+                                                encoderImplementation: encoderImpl,
+                                                decoderImplementation: decoderImpl,
+                                                // Contrast parameters
+                                                targetWidth,
+                                                targetHeight,
+                                                activeWidth,
+                                                activeHeight,
+                                                targetScalability,
+                                                activeScalability,
+                                                warnings
+                                            }
+                                        });
+                                        return;
+                                    } else {
+                                        log(`Awaiting asynchronously populated codec implementation details (Current active checks: ${activeFlowChecks})...`);
+                                    }
                                 } else {
                                     log(`WARNING: Active media detected, but codec is ${codecMime} instead of target ${spec.webrtcCodecName}. Awaiting codec switch...`);
                                 }

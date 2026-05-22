@@ -506,7 +506,7 @@ function handleTestCompleted(test) {
     // 3. Send toast notification
     if (test.status === 'passed') {
         if (hasDeviations) {
-            showToast(`Passed with Deviations: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'info');
+            showToast(`Passed with Deviations: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'warning');
         } else {
             showToast(`Passed: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'passed');
         }

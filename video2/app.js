@@ -9,6 +9,7 @@ import { CapabilityTestEngine } from './tests-engine.js?v=2';
 // Initialize execution engine
 const engine = new CapabilityTestEngine();
 let suiteResults = [];
+let resolvedChromeVersion = 'unknown'; // Cache unmasked Chrome build version
 
 // DOM Element Cache
 const elements = {
@@ -435,6 +436,7 @@ function buildMatrixShell(selections) {
             const row = document.createElement('tr');
             const tdLabel = document.createElement('td');
             tdLabel.className = 'codec-row-header';
+            tdLabel.id = `wrtc_row_hdr_${codecKey}`;
             tdLabel.textContent = CODECS[codecKey].name;
             row.appendChild(tdLabel);
 
@@ -512,6 +514,11 @@ function handleTestCompleted(test) {
         }
     } else if (test.status === 'failed') {
         showToast(`Failed: ${test.apiType} ${test.codecKey} ${test.resKey}`, 'failed');
+    }
+
+    // 4. Dynamically update WebRTC Row Header active implementations summary
+    if (test.apiType === 'WebRTC') {
+        updateWebRTCRowHeaderSummary(test.codecKey);
     }
 }
 
@@ -880,7 +887,23 @@ function showToast(message, type = 'info') {
 function exportResultsToJSON() {
     if (suiteResults.length === 0) return;
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(suiteResults, null, 2));
+    const gpuDiv = document.getElementById('diagGpu');
+    const gpuRenderer = gpuDiv ? gpuDiv.textContent.replace('GPU: ', '') : 'unknown';
+    const ua = navigator.userAgent;
+    const chromeMatch = ua.match(/Chrome\/(\d+\.\d+\.\d+\.\d+)/);
+
+    const exportPayload = {
+        environment: {
+            userAgent: ua,
+            chromeVersion: resolvedChromeVersion,
+            secureContext: window.isSecureContext,
+            gpu: gpuRenderer,
+            timestamp: new Date().toISOString()
+        },
+        results: suiteResults
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
     downloadAnchor.setAttribute("download", `capabilities_report_${Date.now()}.json`);
@@ -899,6 +922,7 @@ function runDiagnostics() {
     const wcBadge = document.getElementById('diagWebCodecs');
     const rtcBadge = document.getElementById('diagWebRTC');
     const gpuDiv = document.getElementById('diagGpu');
+    const uaSpan = document.getElementById('diagUserAgent');
 
     if (!contextBadge || !wcBadge || !rtcBadge || !gpuDiv) return;
 
@@ -922,6 +946,36 @@ function runDiagnostics() {
     rtcBadge.textContent = rtcSupported ? 'Available' : 'Blocked';
     rtcBadge.className = rtcSupported ? 'badge badge-passed' : 'badge badge-failed';
 
+    // 4. User Agent & Chrome version
+    if (uaSpan) {
+        const ua = navigator.userAgent;
+        const chromeMatch = ua.match(/Chrome\/(\d+\.\d+\.\d+\.\d+)/);
+        
+        // Standard fallback (will show zeroed minor versions by default e.g. 123.0.0.0)
+        if (chromeMatch) {
+            resolvedChromeVersion = chromeMatch[1];
+            uaSpan.textContent = `Chrome v${resolvedChromeVersion}`;
+        } else {
+            uaSpan.textContent = 'Non-Chrome Browser';
+        }
+        uaSpan.title = ua;
+
+        // Query modern high-entropy Client Hints to fetch exact build version!
+        if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+            navigator.userAgentData.getHighEntropyValues(['uaFullVersion'])
+                .then(highEntropy => {
+                    if (highEntropy.uaFullVersion) {
+                        resolvedChromeVersion = highEntropy.uaFullVersion;
+                        uaSpan.textContent = `Chrome v${resolvedChromeVersion}`;
+                        uaSpan.title = `${ua}\n(Exact Build Version: ${resolvedChromeVersion})`;
+                    }
+                })
+                .catch(err => {
+                    console.warn('High-entropy Client Hints rejected:', err);
+                });
+        }
+    }
+
     // 4. GPU Probing via WebGL
     try {
         const canvas = document.createElement('canvas');
@@ -931,11 +985,14 @@ function runDiagnostics() {
             if (debugInfo) {
                 const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
                 gpuDiv.textContent = `GPU: ${renderer}`;
+                gpuDiv.title = renderer; // Show full GPU on hover!
             } else {
                 gpuDiv.textContent = `GPU: WebGL active (info restricted)`;
+                gpuDiv.title = "WebGL active (info restricted)";
             }
         } else {
             gpuDiv.textContent = `GPU: WebGL unavailable`;
+            gpuDiv.title = "WebGL unavailable";
         }
     } catch (e) {
         gpuDiv.textContent = `GPU: Probing failed`;
@@ -1090,5 +1147,55 @@ async function retryCurrentModalTest() {
         await engine.retrySingleTest(activeModalTest, timeoutValue);
     } catch (err) {
         showToast(`Retry execution failed: ${err.message}`, 'failed');
+    }
+}
+
+/**
+ * Analyzes active WebRTC test results for a codec and updates its row header to (Hardware), (Software), or (Mixed)
+ */
+function updateWebRTCRowHeaderSummary(codecKey) {
+    // 1. Filter completed WebRTC tests for that codec
+    const codecTests = suiteResults.filter(t => 
+        t.codecKey === codecKey && 
+        t.apiType === 'WebRTC' && 
+        (t.status === 'passed' || t.status === 'failed')
+    );
+    if (codecTests.length === 0) return;
+
+    // 2. Classify each test's active negotiated encoder implementation
+    const classifications = codecTests.map(t => {
+        const impl = t.stats ? t.stats.encoderImplementation || 'unknown' : 'unknown';
+
+        if (impl !== 'unknown') {
+            const lower = impl.toLowerCase();
+            if (lower === 'externalencoder') return 'Hardware';
+            
+            const isSoftware = lower.includes('vpx') || lower.includes('aom') || lower.includes('dav1d') || 
+                               lower.includes('openh264') || lower.includes('software') || lower.includes('libvpx');
+            return isSoftware ? 'Software' : 'Hardware';
+        } else {
+            // Fallback to static probe power-efficiency (which represents hardware support)
+            const isPowerEfficient = t.stats && t.stats.staticPowerEfficient;
+            return isPowerEfficient ? 'Hardware' : 'Software';
+        }
+    });
+
+    // 4. Determine row summary state
+    const hasHardware = classifications.includes('Hardware');
+    const hasSoftware = classifications.includes('Software');
+    let summaryLabel = '';
+
+    if (hasHardware && !hasSoftware) {
+        summaryLabel = 'Hardware';
+    } else if (!hasHardware && hasSoftware) {
+        summaryLabel = 'Software';
+    } else if (hasHardware && hasSoftware) {
+        summaryLabel = 'Mixed';
+    }
+
+    // 5. Update row heading textContent
+    const td = document.getElementById(`wrtc_row_hdr_${codecKey}`);
+    if (td && summaryLabel) {
+        td.textContent = `${CODECS[codecKey].name} (${summaryLabel})`;
     }
 }
